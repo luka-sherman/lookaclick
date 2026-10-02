@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>looka.click</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* eye-w/eye-h and border are measured from Jost's actual "0" glyph ink, not guessed */
+    --eye-w: 0.601em;
+    --eye-h: 0.73em;
+    --pupil-scale: 0.4;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #fff;
+    overflow: hidden;
+  }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+  }
+  .word {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Jost", -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 800;
+    line-height: 1;
+    color: #070014;
+    font-size: 26vw;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .letter {
+    display: inline-block;
+  }
+  .eye {
+    /* no overflow:hidden on purpose: pupil paints over the border instead of being clipped by it, avoiding a seam */
+    position: relative;
+    width: var(--eye-w);
+    height: var(--eye-h);
+    margin: 0 0.02em;
+    border-radius: 50%;
+    background: #fff;
+    border: 0.172em solid #070014;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .pupil {
+    position: absolute;
+    width: calc(var(--eye-w) * var(--pupil-scale));
+    height: calc(var(--eye-h) * var(--pupil-scale));
+    border-radius: 50%;
+    background: #070014;
+    top: 50%;
+    left: 50%;
+    margin-top: calc(var(--eye-h) * var(--pupil-scale) / -2);
+    margin-left: calc(var(--eye-w) * var(--pupil-scale) / -2);
+    will-change: transform;
+  }
+</style>
+</head>
+<body>
+  <div class="word" id="word">
+    <span class="letter">L</span><div class="eye" id="leftEye"><div class="pupil"></div></div><div class="eye" id="rightEye"><div class="pupil"></div></div><span class="letter">k</span><span class="letter">a</span>
+  </div>
+
+<script>
+  const eyes = Array.from(document.querySelectorAll('.eye')).map(eye => ({
+    el: eye,
+    pupil: eye.querySelector('.pupil')
+  }));
+
+  function trackEyes(cursorX, cursorY) {
+    eyes.forEach(({ el, pupil }) => {
+      const eyeRect = el.getBoundingClientRect();
+      const eyeCenterX = eyeRect.left + eyeRect.width / 2;
+      const eyeCenterY = eyeRect.top + eyeRect.height / 2;
+
+      const pupilRect = pupil.getBoundingClientRect();
+
+      const cursorOffsetX = cursorX - eyeCenterX;
+      const cursorOffsetY = cursorY - eyeCenterY;
+
+      // pupil center can travel to the eye's outer radius, so it reaches the border, not just the inner white area
+      const maxOffsetX = eyeRect.width / 2 - pupilRect.width / 2;
+      const maxOffsetY = eyeRect.height / 2 - pupilRect.height / 2;
+
+      const angle = Math.atan2(cursorOffsetY, cursorOffsetX);
+      // scales travel by actual cursor distance, so it tracks precisely when near, caps at the edge when far
+      const distFraction = Math.min(1, Math.hypot(cursorOffsetX / maxOffsetX, cursorOffsetY / maxOffsetY));
+
+      const pupilOffsetX = Math.cos(angle) * maxOffsetX * distFraction;
+      const pupilOffsetY = Math.sin(angle) * maxOffsetY * distFraction;
+
+      pupil.style.transform = `translate(${pupilOffsetX}px, ${pupilOffsetY}px)`;
+    });
+  }
+
+  window.addEventListener('mousemove', e => trackEyes(e.clientX, e.clientY));
+  window.addEventListener('touchmove', e => {
+    if (e.touches.length) trackEyes(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
+
+  // idle default, before any cursor movement: target is far above the viewport, so eyes look up
+  trackEyes(window.innerWidth / 2, -window.innerHeight);
+</script>
+</body>
+</html>
