@@ -9,11 +9,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@800&display=swap" rel="stylesheet">
 <style>
   :root {
-    /* eye-w/eye-h and border are measured from Jost's actual "0" glyph ink, not guessed */
-    --eye-w: 0.601em;
-    --eye-h: 0.73em;
-    --pupil-scale: 0.4;
+    /* eye-w/eye-h and border are measured from Jost's actual lowercase "o" glyph ink, not guessed */
+    --eye-w: 0.543em;
+    --eye-h: 0.484em;
     --eye-border: 0.172em;
+    --pupil-size: 1.5; /* multiplier on the original hole's dimensions */
   }
   * { box-sizing: border-box; }
   html, body {
@@ -46,11 +46,12 @@
   .eye {
     /* no overflow:hidden on purpose: pupil paints over the border instead of being clipped by it, avoiding a seam */
     position: relative;
+    top: 0.118em; /* lowercase "o" sits lower (x-height) than the eye's default flex-centered position */
     width: var(--eye-w);
     height: var(--eye-h);
     margin: 0 0.02em;
     border-radius: 50%;
-    background: #fff;
+    background: #070014;
     border: var(--eye-border) solid #070014;
     display: inline-flex;
     align-items: center;
@@ -58,15 +59,16 @@
     flex-shrink: 0;
   }
   .pupil {
+    /* sized relative to the original white hole (eye minus border on each side), scaled by --pupil-size */
     position: absolute;
-    width: calc(var(--eye-w) * var(--pupil-scale));
-    height: calc(var(--eye-h) * var(--pupil-scale));
+    width: calc((var(--eye-w) - 2 * var(--eye-border)) * var(--pupil-size));
+    height: calc((var(--eye-h) - 2 * var(--eye-border)) * var(--pupil-size));
     border-radius: 50%;
-    background: #070014;
+    background: #fff;
     top: 50%;
     left: 50%;
-    margin-top: calc(var(--eye-h) * var(--pupil-scale) / -2);
-    margin-left: calc(var(--eye-w) * var(--pupil-scale) / -2);
+    margin-top: calc((var(--eye-h) - 2 * var(--eye-border)) * var(--pupil-size) / -2);
+    margin-left: calc((var(--eye-w) - 2 * var(--eye-border)) * var(--pupil-size) / -2);
     will-change: transform;
   }
   .lidMask {
@@ -101,17 +103,20 @@
 
   function blink() {
     eyes.forEach(({ lid }) => {
-      // lid slides down to fully closed (slower), holds briefly, then snaps back up (faster)
+      // real blinks close fast (reflexive muscle contraction) and reopen much slower
+      // (the levator muscle lifting the lid back up) — roughly a 1:3.5 close:open ratio
       lid.animate([
         { transform: 'translateY(-100%)', offset: 0 },
-        { transform: 'translateY(0%)', offset: 0.5, easing: 'ease-in' },
-        { transform: 'translateY(0%)', offset: 0.7 },
-        { transform: 'translateY(-100%)', offset: 1, easing: 'ease-out' }
-      ], { duration: 260 });
+        { transform: 'translateY(0%)', offset: 0.2, easing: 'ease-out' },
+        { transform: 'translateY(0%)', offset: 0.28 },
+        { transform: 'translateY(-100%)', offset: 1, easing: 'ease-in-out' }
+      ], { duration: 350 });
     });
   }
 
   window.addEventListener('click', blink);
+
+  const OVERSHOOT = 0.15; // fraction of the eye's radius the pupil may poke past the outer edge
 
   function trackEyes(cursorX, cursorY) {
     eyes.forEach(({ el, pupil }) => {
@@ -124,9 +129,9 @@
       const cursorOffsetX = cursorX - eyeCenterX;
       const cursorOffsetY = cursorY - eyeCenterY;
 
-      // pupil center can travel to the eye's outer radius, so it reaches the border, not just the inner white area
-      const maxOffsetX = eyeRect.width / 2 - pupilRect.width / 2;
-      const maxOffsetY = eyeRect.height / 2 - pupilRect.height / 2;
+      // pupil center can travel past the eye's outer radius by OVERSHOOT, so it can poke slightly outside
+      const maxOffsetX = eyeRect.width / 2 * (1 + OVERSHOOT) - pupilRect.width / 2;
+      const maxOffsetY = eyeRect.height / 2 * (1 + OVERSHOOT) - pupilRect.height / 2;
 
       const angle = Math.atan2(cursorOffsetY, cursorOffsetX);
       // scales travel by actual cursor distance, so it tracks precisely when near, caps at the edge when far
