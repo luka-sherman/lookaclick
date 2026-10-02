@@ -13,6 +13,7 @@
     --eye-w: 0.601em;
     --eye-h: 0.73em;
     --pupil-scale: 0.4;
+    --eye-border: 0.172em;
   }
   * { box-sizing: border-box; }
   html, body {
@@ -50,7 +51,7 @@
     margin: 0 0.02em;
     border-radius: 50%;
     background: #fff;
-    border: 0.172em solid #070014;
+    border: var(--eye-border) solid #070014;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -68,18 +69,49 @@
     margin-left: calc(var(--eye-w) * var(--pupil-scale) / -2);
     will-change: transform;
   }
+  .lidMask {
+    /* clipping window, oversized by the border width so a fully-closed lid paints over the border seamlessly */
+    position: absolute;
+    inset: calc(-1 * var(--eye-border));
+    border-radius: 50%;
+    overflow: hidden;
+    pointer-events: none;
+  }
+  .lid {
+    /* fixed oval shape (not scaled) that physically slides down through the mask, like a shutter */
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: #070014;
+    transform: translateY(-100%);
+  }
 </style>
 </head>
 <body>
   <div class="word" id="word">
-    <span class="letter">L</span><div class="eye" id="leftEye"><div class="pupil"></div></div><div class="eye" id="rightEye"><div class="pupil"></div></div><span class="letter">k</span><span class="letter">a</span>
+    <span class="letter">L</span><div class="eye" id="leftEye"><div class="pupil"></div><div class="lidMask"><div class="lid"></div></div></div><div class="eye" id="rightEye"><div class="pupil"></div><div class="lidMask"><div class="lid"></div></div></div><span class="letter">k</span><span class="letter">a</span>
   </div>
 
 <script>
   const eyes = Array.from(document.querySelectorAll('.eye')).map(eye => ({
     el: eye,
-    pupil: eye.querySelector('.pupil')
+    pupil: eye.querySelector('.pupil'),
+    lid: eye.querySelector('.lid')
   }));
+
+  function blink() {
+    eyes.forEach(({ lid }) => {
+      // lid slides down to fully closed (slower), holds briefly, then snaps back up (faster)
+      lid.animate([
+        { transform: 'translateY(-100%)', offset: 0 },
+        { transform: 'translateY(0%)', offset: 0.5, easing: 'ease-in' },
+        { transform: 'translateY(0%)', offset: 0.7 },
+        { transform: 'translateY(-100%)', offset: 1, easing: 'ease-out' }
+      ], { duration: 260 });
+    });
+  }
+
+  window.addEventListener('click', blink);
 
   function trackEyes(cursorX, cursorY) {
     eyes.forEach(({ el, pupil }) => {
@@ -108,9 +140,18 @@
   }
 
   window.addEventListener('mousemove', e => trackEyes(e.clientX, e.clientY));
+
+  window.addEventListener('touchstart', e => {
+    if (e.touches.length) trackEyes(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: true });
   window.addEventListener('touchmove', e => {
     if (e.touches.length) trackEyes(e.touches[0].clientX, e.touches[0].clientY);
   }, { passive: true });
+  window.addEventListener('touchend', e => {
+    // pupils stay put after this; nothing calls trackEyes again until the next touchstart
+    e.preventDefault(); // suppress the synthesized click that would otherwise double-fire blink()
+    blink();
+  });
 
   // idle default, before any cursor movement: target is far above the viewport, so eyes look up
   trackEyes(window.innerWidth / 2, -window.innerHeight);
