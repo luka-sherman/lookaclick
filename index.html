@@ -13,7 +13,7 @@
     --eye-w: 0.543em;
     --eye-h: 0.484em;
     --eye-border: 0.172em;
-    --pupil-size: 1.2; /* multiplier on the original hole's dimensions */
+    --pupil-size: 1.5; /* multiplier on the original hole's dimensions */
   }
   * { box-sizing: border-box; }
   html, body {
@@ -44,6 +44,8 @@
     white-space: nowrap;
   }
   .letter {
+    /* flex items respect z-index even without position set; keeps letters above a pupil that overshoots the eye */
+    z-index: 1;
     display: inline-block;
     -webkit-user-select: none;
     -moz-user-select: none;
@@ -66,6 +68,7 @@
     justify-content: center;
     flex-shrink: 0;
     will-change: transform;
+    z-index: 0; /* explicit, so .letter's z-index: 1 unambiguously wins against this stacking context */
   }
   .pupil {
     /* sized relative to the original white hole (eye minus border on each side), scaled by --pupil-size */
@@ -89,14 +92,13 @@
     pointer-events: none;
   }
   .lidTop, .lidBottom {
-    /* fixed oval shape (not scaled) that physically slides through the mask, like a shutter */
+    /* fixed shape (not scaled) that physically slides through the mask, like a shutter */
     position: absolute;
     inset: 0;
-    border-radius: 50%;
     background: #070014;
   }
-  .lidTop { transform: translateY(-100%); }
-  .lidBottom { transform: translateY(100%); }
+  .lidTop { border-radius: 50%; transform: translateY(-100%); } /* leading edge matches the eye's own curvature */
+  .lidBottom { border-radius: 50% / 18%; transform: translateY(100%); } /* flatter leading edge than the top lid */
 </style>
 </head>
 <body>
@@ -145,7 +147,9 @@
 
   window.addEventListener('click', blink);
 
-  const OVERSHOOT = 0.1; // fraction of the eye's radius the pupil may poke past the outer edge
+  const OVERSHOOT = 0.15; // fraction of the eye's radius the pupil may poke past the outer edge
+  const PULL_START = 3.5; // cursor must be this many true-edge-distances away before the pull begins
+  const PULL_END = 12; // pull is fully maxed out by this many true-edge-distances away (wide = gradual ramp)
 
   function trackEyes(cursorX, cursorY) {
     eyes.forEach(({ el, pupil }) => {
@@ -158,16 +162,22 @@
       const cursorOffsetX = cursorX - eyeCenterX;
       const cursorOffsetY = cursorY - eyeCenterY;
 
-      // pupil center can travel past the eye's outer radius by OVERSHOOT, so it can poke slightly outside
-      const maxOffsetX = eyeRect.width / 2 * (1 + OVERSHOOT) - pupilRect.width / 2;
-      const maxOffsetY = eyeRect.height / 2 * (1 + OVERSHOOT) - pupilRect.height / 2;
+      // true edge (no overshoot) and the absolute max once fully "pulled" past it
+      const edgeOffsetX = eyeRect.width / 2 - pupilRect.width / 2;
+      const edgeOffsetY = eyeRect.height / 2 - pupilRect.height / 2;
+      const pulledOffsetX = eyeRect.width / 2 * (1 + OVERSHOOT) - pupilRect.width / 2;
+      const pulledOffsetY = eyeRect.height / 2 * (1 + OVERSHOOT) - pupilRect.height / 2;
 
       const angle = Math.atan2(cursorOffsetY, cursorOffsetX);
-      // scales travel by actual cursor distance, so it tracks precisely when near, caps at the edge when far
-      const distFraction = Math.min(1, Math.hypot(cursorOffsetX / maxOffsetX, cursorOffsetY / maxOffsetY));
+      // 0 at eye center, 1 exactly at the true edge, keeps growing past 1 the farther the cursor goes
+      const rawDistFraction = Math.hypot(cursorOffsetX / edgeOffsetX, cursorOffsetY / edgeOffsetY);
+      // normal tracking: 0 to 1 as the cursor approaches the true edge, pinned at 1 beyond it
+      const distFraction = Math.min(1, rawDistFraction);
+      // stays at 0 until the cursor is PULL_START edge-distances away, then ramps up to maxed by PULL_END
+      const pulledFraction = Math.min(1, Math.max(0, (rawDistFraction - PULL_START) / (PULL_END - PULL_START)));
 
-      const pupilOffsetX = Math.cos(angle) * maxOffsetX * distFraction;
-      const pupilOffsetY = Math.sin(angle) * maxOffsetY * distFraction;
+      const pupilOffsetX = Math.cos(angle) * (edgeOffsetX * distFraction + (pulledOffsetX - edgeOffsetX) * pulledFraction);
+      const pupilOffsetY = Math.sin(angle) * (edgeOffsetY * distFraction + (pulledOffsetY - edgeOffsetY) * pulledFraction);
 
       pupil.style.transform = `translate(${pupilOffsetX}px, ${pupilOffsetY}px)`;
     });
