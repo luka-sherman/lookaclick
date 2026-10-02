@@ -13,7 +13,7 @@
     --eye-w: 0.543em;
     --eye-h: 0.484em;
     --eye-border: 0.172em;
-    --pupil-size: 1.5; /* multiplier on the original hole's dimensions */
+    --pupil-size: 1.2; /* multiplier on the original hole's dimensions */
   }
   * { box-sizing: border-box; }
   html, body {
@@ -52,6 +52,7 @@
   }
   .eye {
     /* no overflow:hidden on purpose: pupil paints over the border instead of being clipped by it, avoiding a seam */
+    /* scaled as a whole during blink, so the pupil (its child) squashes along with it automatically */
     position: relative;
     top: 0.118em; /* lowercase "o" sits lower (x-height) than the eye's default flex-centered position */
     width: var(--eye-w);
@@ -64,6 +65,7 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+    will-change: transform;
   }
   .pupil {
     /* sized relative to the original white hole (eye minus border on each side), scaled by --pupil-size */
@@ -86,44 +88,64 @@
     overflow: hidden;
     pointer-events: none;
   }
-  .lid {
-    /* fixed oval shape (not scaled) that physically slides down through the mask, like a shutter */
+  .lidTop, .lidBottom {
+    /* fixed oval shape (not scaled) that physically slides through the mask, like a shutter */
     position: absolute;
     inset: 0;
     border-radius: 50%;
     background: #070014;
-    transform: translateY(-100%);
   }
+  .lidTop { transform: translateY(-100%); }
+  .lidBottom { transform: translateY(100%); }
 </style>
 </head>
 <body>
   <div class="word" id="word">
-    <span class="letter">L</span><div class="eye" id="leftEye"><div class="pupil"></div><div class="lidMask"><div class="lid"></div></div></div><div class="eye" id="rightEye"><div class="pupil"></div><div class="lidMask"><div class="lid"></div></div></div><span class="letter">k</span><span class="letter">a</span>
+    <span class="letter">L</span><div class="eye" id="leftEye"><div class="pupil"></div><div class="lidMask"><div class="lidTop"></div><div class="lidBottom"></div></div></div><div class="eye" id="rightEye"><div class="pupil"></div><div class="lidMask"><div class="lidTop"></div><div class="lidBottom"></div></div></div><span class="letter">k</span><span class="letter">a</span>
   </div>
 
 <script>
   const eyes = Array.from(document.querySelectorAll('.eye')).map(eye => ({
     el: eye,
     pupil: eye.querySelector('.pupil'),
-    lid: eye.querySelector('.lid')
+    lidTop: eye.querySelector('.lidTop'),
+    lidBottom: eye.querySelector('.lidBottom')
   }));
 
+  // real blinks are upper-lid-dominant: the top lid does ~92% of the travel, the bottom
+  // lid rises only ~8% to meet it, and the eye visibly compresses (squashes) as it closes
+  const BOTTOM_LID_SHARE = 0.08;
+  const CLOSE_OFFSET = 0.2, HOLD_OFFSET = 0.28; // close fast, reopen slow (same ratio as before)
+
   function blink() {
-    eyes.forEach(({ lid }) => {
-      // real blinks close fast (reflexive muscle contraction) and reopen much slower
-      // (the levator muscle lifting the lid back up) — roughly a 1:3.5 close:open ratio
-      lid.animate([
+    eyes.forEach(({ el, lidTop, lidBottom }) => {
+      lidTop.animate([
         { transform: 'translateY(-100%)', offset: 0 },
-        { transform: 'translateY(0%)', offset: 0.2, easing: 'ease-out' },
-        { transform: 'translateY(0%)', offset: 0.28 },
+        { transform: `translateY(${-BOTTOM_LID_SHARE * 100}%)`, offset: CLOSE_OFFSET, easing: 'ease-out' },
+        { transform: `translateY(${-BOTTOM_LID_SHARE * 100}%)`, offset: HOLD_OFFSET },
         { transform: 'translateY(-100%)', offset: 1, easing: 'ease-in-out' }
+      ], { duration: 350 });
+
+      lidBottom.animate([
+        { transform: 'translateY(100%)', offset: 0 },
+        { transform: `translateY(${(1 - BOTTOM_LID_SHARE) * 100}%)`, offset: CLOSE_OFFSET, easing: 'ease-out' },
+        { transform: `translateY(${(1 - BOTTOM_LID_SHARE) * 100}%)`, offset: HOLD_OFFSET },
+        { transform: 'translateY(100%)', offset: 1, easing: 'ease-in-out' }
+      ], { duration: 350 });
+
+      // the whole eye (and its child pupil, along with it) compresses as the lids close
+      el.animate([
+        { transform: 'scale(1, 1)', offset: 0 },
+        { transform: 'scale(1.01, 0.95)', offset: CLOSE_OFFSET, easing: 'ease-out' },
+        { transform: 'scale(1.01, 0.95)', offset: HOLD_OFFSET },
+        { transform: 'scale(1, 1)', offset: 1, easing: 'ease-in-out' }
       ], { duration: 350 });
     });
   }
 
   window.addEventListener('click', blink);
 
-  const OVERSHOOT = 0.15; // fraction of the eye's radius the pupil may poke past the outer edge
+  const OVERSHOOT = 0.1; // fraction of the eye's radius the pupil may poke past the outer edge
 
   function trackEyes(cursorX, cursorY) {
     eyes.forEach(({ el, pupil }) => {
